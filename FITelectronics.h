@@ -81,7 +81,7 @@ public:
         return wordsRead;
     }
 
-    void calcStats() {
+    void calcStats(qint16 tLow=-2048, qint16 tUp=2048, qint16 aLow=-256, qint16 aUp=4096) {
         quint8 iCh;
         qint16 iBin;
         quint16 v;
@@ -89,24 +89,24 @@ public:
         double m, r;
         for (iCh=0; iCh<12; ++iCh) {
             s = 0; m = r = 0;
-            for (iBin=-2048; iBin < 2048; ++iBin) { v = data.Ch[iCh].time[iBin & 0xFFF]; s += v; m += v*iBin; r += v*iBin*iBin; }
+            for (iBin= tLow; iBin < tUp; ++iBin) { v = data.Ch[iCh].time[iBin & 0xFFF]; s += v; m += v*iBin; r += v*iBin*iBin; }
             statsCh[iCh][hTime].sum = s;
-            statsCh[iCh][hTime].mean = m /= s;
-            statsCh[iCh][hTime].RMS = sqrt(r/s - m*m);
+            statsCh[iCh][hTime].mean = s? m /= s : 0;
+            statsCh[iCh][hTime].RMS = s? sqrt(r/s - m*m) : 0;
 
             s = 0; m = r = 0;
-            for (iBin= -256; iBin <    0; ++iBin) { v = data.Ch[iCh].nADC0[-iBin - 1];   s += v; m += v*iBin; r += v*iBin*iBin; }
-            for (iBin=    0; iBin < 4096; ++iBin) { v = data.Ch[iCh].pADC0[iBin];        s += v; m += v*iBin; r += v*iBin*iBin; }
+            for (iBin= aLow         ; iBin < aUp>0?0:aUp; ++iBin) { v = data.Ch[iCh].nADC0[-iBin - 1];   s += v; m += v*iBin; r += v*iBin*iBin; }
+            for (iBin= aLow<0?0:aLow; iBin < aUp        ; ++iBin) { v = data.Ch[iCh].pADC0[iBin];        s += v; m += v*iBin; r += v*iBin*iBin; }
             statsCh[iCh][hADC0].sum = s;
-            statsCh[iCh][hADC0].mean = m /= s;
-            statsCh[iCh][hADC0].RMS = sqrt(r/s - m*m);
+            statsCh[iCh][hADC0].mean = s? m /= s : 0;
+            statsCh[iCh][hADC0].RMS = s? sqrt(r/s - m*m) : 0;
 
             s = 0; m = r = 0;
-            for (iBin= -256; iBin <    0; ++iBin) { v = data.Ch[iCh].nADC1[-iBin - 1];   s += v; m += v*iBin; r += v*iBin*iBin; }
-            for (iBin=    0; iBin < 4096; ++iBin) { v = data.Ch[iCh].pADC1[iBin];        s += v; m += v*iBin; r += v*iBin*iBin; }
+            for (iBin= aLow         ; iBin < aUp>0?0:aUp; ++iBin) { v = data.Ch[iCh].nADC1[-iBin - 1];   s += v; m += v*iBin; r += v*iBin*iBin; }
+            for (iBin= aLow<0?0:aLow; iBin < aUp        ; ++iBin) { v = data.Ch[iCh].pADC1[iBin];        s += v; m += v*iBin; r += v*iBin*iBin; }
             statsCh[iCh][hADC1].sum = s;
-            statsCh[iCh][hADC1].mean = m /= s;
-            statsCh[iCh][hADC1].RMS = sqrt(r/s - m*m);
+            statsCh[iCh][hADC1].mean = s? m /= s : 0;
+            statsCh[iCh][hADC1].RMS = s? sqrt(r/s - m*m) : 0;
         }
     }
 

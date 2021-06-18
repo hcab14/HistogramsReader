@@ -6,6 +6,7 @@
 const quint32 datasize = 76800;
 enum histType {hADC0 = 0, hADC1 = 1, hTime = 2};
 
+
 class FITelectronics: public IPbusTarget {
     Q_OBJECT
 public:
@@ -161,6 +162,14 @@ public slots:
     void switchFilter(bool on) { if (on) setBit(12, (curPM+1)*0x200 + 0x7E); else clearBit(12, (curPM+1)*0x200 + 0x7E); }
 
     void setBCID(int BC) { if (BC >= 0 && BC < 0xDEC) writeNbits(BC, (curPM+1)*0x200 + 0x7E, 12); }
+
+private:
+#ifdef Q_CC_GNU
+  static unsigned char _BitScanForward(unsigned long *Index, unsigned long Mask) {
+    *Index = __builtin_ctz(Mask);
+    return Mask != 0;
+  }
+#endif
 };
 
 #endif // FITELECTRONICS_H

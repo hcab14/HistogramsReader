@@ -97,11 +97,11 @@ public:
             out.setDevice(&ft);
             out << " bin ";
             for (int iCh=0; iCh<12; ++iCh) out << QString::asprintf(":Ch%02dT", iCh + 1);
-            out << Qt::endl;
+            out << endl;
             for (int iBin=-2048; iBin < 2048; ++iBin) {
                 out << QString::asprintf("%5d", iBin);
                 for (int iCh=0; iCh<12; ++iCh) out << QString::asprintf(":%5d", FEE.data.Ch[iCh].time[iBin & 0xFFF]);
-                out << Qt::endl;
+                out << endl;
             }
             ft.close();
         } else return false;
@@ -110,16 +110,16 @@ public:
             out.setDevice(&fa);
             out << " bin";
             for (int iCh=0; iCh<12; ++iCh) out << QString::asprintf(":C%02dA0:C%02dA1", iCh + 1, iCh + 1);
-            out << Qt::endl;
+            out << endl;
             for (int iBin=-256; iBin <    0; ++iBin) {
                 out << QString::asprintf("%4d", iBin);
                 for (int iCh=0; iCh<12; ++iCh) out << QString::asprintf(":%5d:%5d", FEE.data.Ch[iCh].nADC0[-iBin - 1], FEE.data.Ch[iCh].nADC1[-iBin - 1]);
-                out << Qt::endl;
+                out << endl;
             }
             for (int iBin=   0; iBin < 4096; ++iBin) {
                 out << QString::asprintf("%4d", iBin);
                 for (int iCh=0; iCh<12; ++iCh) out << QString::asprintf(":%5d:%5d", FEE.data.Ch[iCh].pADC0[iBin], FEE.data.Ch[iCh].pADC1[iBin]);
-                out << Qt::endl;
+                out << endl;
             }
             fa.close();
         } else return false;

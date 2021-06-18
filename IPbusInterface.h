@@ -174,7 +174,7 @@ protected:
         for (quint16 j = 1, n = 0; !transactionsList.isEmpty() && j < responseSize; ++j, ++n) {
             TransactionHeader th = response[j];
             if (th.ProtocolVersion != 2 || th.TransactionID != n) {
-                emit IPbusError(QString::asprintf("unexpected transaction header: %08X, expected: 2%03X??F0", th, n));
+                emit IPbusError(QString::asprintf("unexpected transaction header: %08X, expected: 2%03X??F0", qint32(th), n));
                 return false;
             }
             quint8 nWords = th.Words;
@@ -234,8 +234,8 @@ protected slots:
         transactionsList.clear();
     }
 
-	void error() {
-		updateTimer->stop();
+        void error() {
+                updateTimer->stop();
 		resetTransactions();
 	}
 
@@ -270,7 +270,7 @@ public slots:
 	void writeRegister(quint32 data, quint32 address, bool syncOnSuccess = true) {
         addTransaction(write, address, &data, 1);
 		if (transceive() && syncOnSuccess) sync();
-    }
+        }
 
 	void setBit(quint8 n, quint32 address, bool syncOnSuccess = true) {
 		addTransaction(RMWbits, address, masks(0xFFFFFFFF, 1 << n));

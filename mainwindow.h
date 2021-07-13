@@ -4,6 +4,7 @@
 #include "ui_mainwindow.h"
 #include "FITelectronics.h"
 #include "switch.h"
+#include <QtGlobal>
 #include <QMainWindow>
 #include <QtWidgets>
 #include <QDateTime>
@@ -11,9 +12,12 @@
 #include "qcustomplot.h"
 
 #ifdef Q_CC_GNU
+// Qt::endl was instroduced in 5.14.0, see https://doc.qt.io/qt-5/qt.html#endl
+#if (QT_VERSION < QT_VERSION_CHECK(5, 14, 0))
 namespace Qt {
 static auto endl = '\n';
 }
+#endif
 #endif
 
 namespace Ui {

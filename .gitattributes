@@ -1,2 +1,19 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+!images/SW.png filter=lfs diff=lfs merge=lfs -text
+!images/1G.png filter=lfs diff=lfs merge=lfs -text
+!images/clear.png filter=lfs diff=lfs merge=lfs -text
+!images/send.png filter=lfs diff=lfs merge=lfs -text
+!images/SW0.png filter=lfs diff=lfs merge=lfs -text
+!images/SW1h.png filter=lfs diff=lfs merge=lfs -text
+!images/SW1.png filter=lfs diff=lfs merge=lfs -text
+!images/v.png filter=lfs diff=lfs merge=lfs -text
+!images/write.png filter=lfs diff=lfs merge=lfs -text
+!images/x.png filter=lfs diff=lfs merge=lfs -text
+!images/0G.png filter=lfs diff=lfs merge=lfs -text
+!images/0R.png filter=lfs diff=lfs merge=lfs -text
+!images/controls.png filter=lfs diff=lfs merge=lfs -text
+!images/recheck.png filter=lfs diff=lfs merge=lfs -text
+!images/1R.png filter=lfs diff=lfs merge=lfs -text
+!images/load.png filter=lfs diff=lfs merge=lfs -text
+!images/save.png filter=lfs diff=lfs merge=lfs -text

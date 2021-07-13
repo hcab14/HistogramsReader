@@ -4,7 +4,7 @@
 #include "IPbusInterface.h"
 
 const quint32 datasize = 76800;
-enum histType {hADC0 = 0, hADC1 = 1, hTime = 2};
+enum histType {hADC0 = 0, hADC1 = 1, hTime = 2, hAmpl = 3};
 
 class FITelectronics: public IPbusTarget {
     Q_OBJECT
@@ -60,7 +60,7 @@ public:
     struct TypeStats {
         quint32 sum;
         double mean, RMS;
-    } statsCh[12][3];
+    } statsCh[12][4];
 
     FITelectronics(): IPbusTarget(50011) {
         connect(this, &IPbusTarget::IPbusStatusOK, this, &FITelectronics::checkPMlinks);
@@ -81,34 +81,68 @@ public:
         return wordsRead;
     }
 
-    void calcStats() {
+    void calcStats(qint16 timeLower[12], qint16 timeUpper[12], qint16 chargeLower[12], qint16 chargeUpper[12]) {
         quint8 iCh;
         qint16 iBin;
         quint16 v;
         quint32 s;
         double m, r;
+
+        qint16 chNlower, chNupper, chPlower, chPupper;
+
         for (iCh=0; iCh<12; ++iCh) {
+
             s = 0; m = r = 0;
-            for (iBin=-2048; iBin < 2048; ++iBin) { v = data.Ch[iCh].time[iBin & 0xFFF]; s += v; m += v*iBin; r += v*iBin*iBin; }
+            for (iBin=timeLower[iCh]; iBin < timeUpper[iCh]; ++iBin) { v = data.Ch[iCh].time[iBin & 0xFFF]; s += v; m += v*iBin; r += v*iBin*iBin; }
             statsCh[iCh][hTime].sum = s;
             statsCh[iCh][hTime].mean = m /= s;
             statsCh[iCh][hTime].RMS = sqrt(r/s - m*m);
 
             s = 0; m = r = 0;
-            for (iBin= -256; iBin <    0; ++iBin) { v = data.Ch[iCh].nADC0[-iBin - 1];   s += v; m += v*iBin; r += v*iBin*iBin; }
-            for (iBin=    0; iBin < 4096; ++iBin) { v = data.Ch[iCh].pADC0[iBin];        s += v; m += v*iBin; r += v*iBin*iBin; }
+
+            if(chargeLower[iCh] < 0 && chargeUpper[iCh] < 0) {
+                chNlower = chargeLower[iCh];
+                chNupper = chargeUpper[iCh];
+                chPlower = chPupper = 0;
+            } else if(chargeLower[iCh] < 0 && chargeUpper[iCh] >= 0) {
+                chNlower = chargeLower[iCh];
+                chNupper = 0;
+                chPlower = 0;
+                chPupper = chargeUpper[iCh];
+            } else if(chargeLower[iCh] >= 0 && chargeUpper[iCh] >= 0){
+                chNlower = chNupper = 0;
+                chPlower = chargeLower[iCh];
+                chPupper = chargeUpper[iCh];
+            }
+
+            for (iBin= chNlower; iBin < chNupper; ++iBin) { v = data.Ch[iCh].nADC0[-iBin - 1];   s += v; m += v*iBin; r += v*iBin*iBin; }
+            for (iBin= chPlower; iBin < chPupper; ++iBin) { v = data.Ch[iCh].pADC0[iBin];        s += v; m += v*iBin; r += v*iBin*iBin; }
+            statsCh[iCh][hAmpl].sum = s;
+            statsCh[iCh][hAmpl].mean = m;
+            statsCh[iCh][hAmpl].RMS = r;
             statsCh[iCh][hADC0].sum = s;
             statsCh[iCh][hADC0].mean = m /= s;
             statsCh[iCh][hADC0].RMS = sqrt(r/s - m*m);
 
             s = 0; m = r = 0;
-            for (iBin= -256; iBin <    0; ++iBin) { v = data.Ch[iCh].nADC1[-iBin - 1];   s += v; m += v*iBin; r += v*iBin*iBin; }
-            for (iBin=    0; iBin < 4096; ++iBin) { v = data.Ch[iCh].pADC1[iBin];        s += v; m += v*iBin; r += v*iBin*iBin; }
+            for (iBin= chNlower; iBin < chNupper; ++iBin) { v = data.Ch[iCh].nADC1[-iBin - 1];   s += v; m += v*iBin; r += v*iBin*iBin; }
+            for (iBin= chPlower; iBin < chPupper; ++iBin) { v = data.Ch[iCh].pADC1[iBin];        s += v; m += v*iBin; r += v*iBin*iBin; }
+            statsCh[iCh][hAmpl].sum += s;
+            statsCh[iCh][hAmpl].mean += m;
+            statsCh[iCh][hAmpl].RMS += r;
+            statsCh[iCh][hAmpl].mean /= statsCh[iCh][hAmpl].sum;
+            statsCh[iCh][hAmpl].RMS = sqrt(statsCh[iCh][hAmpl].RMS / statsCh[iCh][hAmpl].sum - pow(statsCh[iCh][hAmpl].mean, 2));
             statsCh[iCh][hADC1].sum = s;
             statsCh[iCh][hADC1].mean = m /= s;
             statsCh[iCh][hADC1].RMS = sqrt(r/s - m*m);
         }
     }
+#ifdef Q_CC_GNU
+  static unsigned char _BitScanForward(unsigned long *Index, unsigned long Mask) {
+    *Index = __builtin_ctz(Mask);
+    return Mask != 0;
+  }
+#endif
 
 signals:
     void linksStatusReady(quint32);

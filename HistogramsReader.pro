@@ -1,4 +1,4 @@
-QT       += core gui network
+QT       += core gui network printsupport
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -9,9 +9,13 @@ CONFIG += c++latest
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+	qcustomplot.cpp \
     main.cpp
 
+SUBDIRS= ./
+
 HEADERS += \
+	qcustomplot.h \
 	mainwindow.h \
 	IPbusHeaders.h \
 	IPbusInterface.h \
@@ -22,7 +26,7 @@ FORMS += \
     mainwindow.ui
 
 RESOURCES += \
-		../!images/img.qrc
+		./!images/img.qrc
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin

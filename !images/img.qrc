@@ -1,0 +1,21 @@
+<RCC>
+    <qresource prefix="/">
+        <file>0G.png</file>
+        <file>0R.png</file>
+        <file>1G.png</file>
+        <file>1R.png</file>
+        <file>load.png</file>
+        <file>recheck.png</file>
+        <file>save.png</file>
+        <file>send.png</file>
+        <file>v.png</file>
+        <file>x.png</file>
+        <file>write.png</file>
+        <file>clear.png</file>
+        <file>SW.png</file>
+        <file>SW0.png</file>
+        <file>SW1.png</file>
+		<file>SW1h.png</file>
+        <file>controls.png</file>
+    </qresource>
+</RCC>

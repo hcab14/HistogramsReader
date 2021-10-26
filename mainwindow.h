@@ -1,14 +1,16 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
+#include <numeric>
 #include "ui_mainwindow.h"
 #include "FITelectronics.h"
 #include "switch.h"
 #include <QMainWindow>
 #include <QtWidgets>
 #include <QDateTime>
+#include <iostream>
 
-#include "qcustomplot.h"
+#include <QTextStream>
 
 namespace Ui {
 class MainWindow;
@@ -41,11 +43,13 @@ public:
 
 //initialization
         setWindowTitle(QCoreApplication::applicationName() + " v" + QCoreApplication::applicationVersion());
+
         allWidgets = ui->centralwidget->findChildren<QWidget *>();
 
 //initial scaling (a label with fontsize 10 (Calibri) has pixelsize of 13 without system scaling and e.g. 20 at 150% scaling so widgets size should be recalculated)
         sz = ui->label_trigger->fontInfo().pixelSize();
         resize(lround(width()*sz/13.), lround(height()*sz/13.)); //mainWindow
+//        setMaximumSize(size());
         setMinimumSize(size());
         if (sz > 13) { //not default pixelsize for font of size 10
             foreach (QWidget *w, allWidgets) w->setGeometry(lround(w->x()*sz/13.), lround(w->y()*sz/13.), lround(w->width()*sz/13.), lround(w->height()*sz/13.));
@@ -58,33 +62,51 @@ public:
 //        networkMenu->addAction("Test qd", &FEE, &FITelectronics::testSpeed);
 
 //signal-slot conections
-        connect(&FEE, &IPbusTarget::error, this, [=](QString message, errorType et) {
-            QMessageBox::warning(this, errorTypeName[et], message);
-            statusBar()->showMessage(message);
-            ui->centralwidget->setDisabled(true);
+        connect(&FEE, &IPbusTarget::networkError, this, [=](QString message) { QMessageBox::warning(this, "Network Error", message); statusBar()->showMessage(message); timer.stop(); });
+        connect(&FEE, &IPbusTarget::IPbusError  , this, [=](QString message) { QMessageBox::warning(this, "IPbus error"  , message); statusBar()->showMessage(message); timer.stop(); });
+        connect(&FEE, &IPbusTarget::logicError  , this, [=](QString message) { QMessageBox::warning(this, "Error"        , message); statusBar()->showMessage(message); timer.stop(); });
+        connect(&FEE, &IPbusTarget::IPbusStatusOK, this, [=]() {
+            statusBar()->showMessage(FEE.IPaddress + ": online");
+
+            ui->groupBox->setEnabled(true);
+            ui->groupBox_2->setEnabled(true);
+            ui->comboBox->setEnabled(true);
+            ui->label_PM->setEnabled(true);
+//            ui->centralwidget->setEnabled(true);
         });
-        connect(&FEE, &IPbusTarget::noResponse, this, [=](QString message) {
-            statusBar()->showMessage(statusBar()->currentMessage() == "" ? FEE.IPaddress + ": " + message : "");
-            ui->centralwidget->setDisabled(true);
+        connect(&FEE, &IPbusTarget::noResponse, this, [=]() {
+//            statusBar()->showMessage(FEE.IPaddress + ": no response");
+            timer.stop();
+            statusBar()->showMessage(statusBar()->currentMessage() == "" ? FEE.IPaddress + ": no response" : "");
+
+            ui->groupBox->setDisabled(true);
+            ui->groupBox_2->setDisabled(true);
+            ui->comboBox->setDisabled(true);
+            ui->label_PM->setDisabled(true);
+//            ui->centralwidget->setDisabled(true);
         });
         connect(&FEE, &FITelectronics::linksStatusReady, this, [=](quint32 mask) {
             ui->comboBox->clear();
-            if (mask == 0) {
-                ui->comboBox->addItem("N/A");
-                FEE.updateTimer->stop();
-                statusBar()->showMessage(FEE.IPaddress + ": no PM available");
-                ui->centralwidget->setDisabled(true);
-            } else {
-                for (quint8 i=0; i<10; ++i, mask >>= 1) if (mask & 1) ui->comboBox->addItem(QString("A") + QChar('0' + i));
-                for (quint8 i=0; i<10; ++i, mask >>= 1) if (mask & 1) ui->comboBox->addItem(QString("C") + QChar('0' + i));
-                on_comboBox_activated(ui->comboBox->itemText(0));
-            }
+            for (quint8 i=0; i<10; ++i, mask >>= 1) if (mask & 1) ui->comboBox->addItem(QString("A") + QChar('0' + i));
+            for (quint8 i=0; i<10; ++i, mask >>= 1) if (mask & 1) ui->comboBox->addItem(QString("C") + QChar('0' + i));
             ui->comboBox->setCurrentIndex(0);
         });
         connect(&FEE, &FITelectronics::statusReady, this, &MainWindow::updateActualValues);
 
         QString IPaddress = settings.value("IPaddress", FEE.IPaddress).toString();
         if (validIPaddressRE.exactMatch(IPaddress)) FEE.IPaddress = IPaddress;
+
+        ui->groupBox->setDisabled(true);
+        ui->groupBox_2->setDisabled(true);
+        ui->comboBox->setDisabled(true);
+        ui->label_PM->setDisabled(true);
+//        ui->centralwidget->setDisabled(true);
+//        FEE.reconnect();
+
+// stop timer if histogramming switching of in hardware
+        connect(ui->switch_historgamming,&Switch::toggled,this,[&](bool isOn){
+            if(!isOn) timer.stop();
+        });
 
 // setup histograms and canvases
         InitHistograms();
@@ -132,6 +154,7 @@ public:
                     this,&MainWindow::auto_rescale);
         }
 
+//        QTimer::singleShot(500,this,[&](){ FEE.reconnect(); });
         FEE.reconnect();
     }
 
@@ -212,7 +235,7 @@ public:
         timeHist[10] = ui->ctime11;
         timeHist[11] = ui->ctime12;
 
-        //timeHist[1]->setLayout(new QGridLayout());
+        timeHist[1]->setLayout(new QGridLayout());
         QLabel* lbl = new QLabel(ui->lbl_Mean);
         ((QGridLayout*)timeHist[1]->layout())->addWidget(lbl,0,0);
         lbl->show();
@@ -479,13 +502,12 @@ public slots:
         ui->centralwidget->setDisabled(FEE.boardStatus.resetting);
         if (FEE.boardStatus.resetting)
             statusBar()->showMessage("PM is resetting");
-        else
-            statusBar()->showMessage(statusBar()->currentMessage() == "" ? FEE.IPaddress + ": online" : "");
+        else if (statusBar()->currentMessage() == "PM is resetting")
+            statusBar()->showMessage(FEE.IPaddress + ": online");
         ui->switch_historgamming->setChecked(FEE.histStatus.histOn);
         ui->switch_filter->setChecked(FEE.histStatus.filterOn);
         if (ui->spinBox->value() != FEE.histStatus.BCID) ui->spinBox->setValue(FEE.histStatus.BCID);
         ui->label_historgamming->setToolTip(QString::number(FEE.curAddress));
-        if (ui->doRepeat->isChecked()) on_button_read_clicked();
     }
 
 
@@ -541,45 +563,59 @@ private slots:
     void on_button_reset_clicked() { FEE.reset(); }
 
     void on_button_read_clicked() {
-        on_button_clear_screen_clicked();
+        timer.disconnect();
 
-        start = QDateTime::currentDateTime();
-        quint32 n = FEE.readHistograms();
-        if (n != datasize) {
-            statusBar()->showMessage(QString::asprintf( "%d/%d words read (%.1f%% of data)", n, datasize, n*100./datasize ));
+        if(ui->doRepeat->isChecked()){
+            timer.setSingleShot(0);
+            timer.setInterval(1000);
         } else {
-            statusBar()->showMessage(QString::asprintf( "Data read in %.3f s", start.msecsTo(QDateTime::currentDateTime())/1000. ));
-            start = QDateTime::currentDateTime();
-            quint16 max = 0, *b = (quint16 *)&FEE.data, *e = b + datasize;
-            for (quint16 *p=b; p<e; ++p) { if (*p > max) max = *p; }
-            statusBar()->showMessage(statusBar()->currentMessage() + ", max: " + QString::number(max));
-
-            // Fill histograms view
-            for(quint8 i=0; i<12; i++){
-                for(quint16 k=0; k<256; k++){
-                    if(FEE.data.Ch[i].nADC0[255-k])
-                        chargeBars[i]->data().data()->add(QCPBarsData(-256+k,FEE.data.Ch[i].nADC0[255-k]));
-                    if(FEE.data.Ch[i].nADC1[255-k])
-                        chargeBars1[i]->data().data()->add(QCPBarsData(-256+k,FEE.data.Ch[i].nADC1[255-k]));
-                }
-                for(qint32 k=0; k<4095; k++){
-                    if(FEE.data.Ch[i].pADC0[k])
-                        chargeBars[i]->data().data()->add(QCPBarsData(k,FEE.data.Ch[i].pADC0[k]));
-                    if(FEE.data.Ch[i].pADC1[k])
-                        chargeBars1[i]->data().data()->add(QCPBarsData(k,FEE.data.Ch[i].pADC1[k]));
-                    if(FEE.data.Ch[i].time[(k-2048) & 0xFFF])
-                        timeBars[i]->data().data()->add(QCPBarsData(-2048+k,FEE.data.Ch[i].time[(k-2048) & 0xFFF]));
-                }
-            }
-            if(ui->doAutoReset->isChecked() && max >= ui->spin_auto_reset->value()) {
-                FEE.reset();
-            }
+            timer.setSingleShot(1);
         }
 
-        FEE.calcStats( getRanges(1,0).data(),getRanges(1,1).data()
-                      ,getRanges(0,0).data(),getRanges(0,1).data());
-        update_stats_labels();
-        on_button_update_clicked();
+        timer.callOnTimeout([&](){
+            on_button_clear_screen_clicked();
+
+            start = QDateTime::currentDateTime();
+            quint32 n = FEE.readHistograms();
+            if (n != datasize) {
+                statusBar()->showMessage(QString::asprintf( "%d/%d words read (%.1f%% of data)", n, datasize, n*100./datasize ));
+            } else {
+                statusBar()->showMessage(QString::asprintf( "Data read in %.3f s", start.msecsTo(QDateTime::currentDateTime())/1000. ));
+                start = QDateTime::currentDateTime();
+                quint16 max = 0, *b = (quint16 *)&FEE.data, *e = b + datasize;
+                for (quint16 *p=b; p<e; ++p) { if (*p > max) max = *p; }
+                statusBar()->showMessage(statusBar()->currentMessage() + ", max: " + QString::number(max));
+
+                // Fill histograms view
+                for(quint8 i=0; i<12; i++){
+                    for(quint16 k=0; k<256; k++){
+                        if(FEE.data.Ch[i].nADC0[255-k])
+                            chargeBars[i]->data().data()->add(QCPBarsData(-256+k,FEE.data.Ch[i].nADC0[255-k]));
+                        if(FEE.data.Ch[i].nADC1[255-k])
+                            chargeBars1[i]->data().data()->add(QCPBarsData(-256+k,FEE.data.Ch[i].nADC1[255-k]));
+                    }
+                    for(qint32 k=0; k<4095; k++){
+                        if(FEE.data.Ch[i].pADC0[k])
+                            chargeBars[i]->data().data()->add(QCPBarsData(k,FEE.data.Ch[i].pADC0[k]));
+                        if(FEE.data.Ch[i].pADC1[k])
+                            chargeBars1[i]->data().data()->add(QCPBarsData(k,FEE.data.Ch[i].pADC1[k]));
+                        if(FEE.data.Ch[i].time[(k-2048) & 0xFFF])
+                            timeBars[i]->data().data()->add(QCPBarsData(-2048+k,FEE.data.Ch[i].time[(k-2048) & 0xFFF]));
+                    }
+                }
+                if(ui->doAutoReset->isChecked() && max >= ui->spin_auto_reset->value()) {
+                    FEE.reset();
+                }
+            }
+
+            FEE.calcStats( getRanges(1,0).data(),getRanges(1,1).data()
+                          ,getRanges(0,0).data(),getRanges(0,1).data());
+            update_stats_labels();
+            on_button_update_clicked();
+        });
+
+        timer.start();
+
     }
 
     void on_button_hide_show_zero_clicked(bool checked){
@@ -714,6 +750,12 @@ private slots:
  */
     }
 
+    void on_doRepeat_stateChanged(int arg1){
+        if(!arg1){
+            timer.stop();
+        }
+    }
+
     void on_pushButton_clicked(bool checked){
         if(checked) {
             ui->pushButton->setText("to linear scale");
@@ -749,6 +791,120 @@ private slots:
         }
 
         on_button_update_clicked();
+    }
+
+    void on_buttonCalTimeOffset_clicked() {
+        QTextStream out(stdout);
+
+        // compute mean time from the current histograms
+        double meanTime[12];
+        bool timeOK[12];
+        for (auto ch=0; ch<12; ++ch) {
+            timeOK[ch] = false;
+            meanTime[ch] = 0.0;
+            double sumW=0;
+            double sumWX = 0;
+            quint32 timeCountMax = 0;
+            for (auto i=0; i<4096; ++i) {
+                auto const timeCounts = FEE.data.Ch[ch].time[i];
+                timeCountMax = (timeCounts > timeCountMax ? timeCounts : timeCountMax);
+                auto const signedTime = (i>=2048 ? i-4096 : i);
+                sumW  += timeCounts;
+                sumWX += signedTime * timeCounts;
+                if (timeCounts) {
+                    out << "ch[" << ch << "] i= " << signedTime << " val= " << timeCounts << Qt::endl;
+                }
+            }
+            timeOK[ch] = timeCountMax > 1000;
+            if (timeOK[ch]) {
+                meanTime[ch] = sumWX / sumW;
+            }
+        }
+
+        // update registers
+        quint32 regs[12];
+        auto success = FEE.readTimeAlignment(regs);
+        out << "success = " << success << Qt::endl;
+        for (int ch=0; ch<12; ++ch) {
+            out << "ch[" << ch << "] align= " << (regs[ch]&4095) << Qt::endl;
+            if (timeOK[ch]) {
+                quint32 regNew = int(regs[ch]&4095) + std::lround(meanTime[ch]);
+                out << "meanTime[" << ch << "] " << meanTime[ch] << " xNew = " << regNew << Qt::endl;
+                regs[ch] = ((regs[ch] >> 12) << 12) | (regNew & 4095);
+            }
+        }
+        success = FEE.writeTimeAlignment(regs);
+        out << "success = " << success << Qt::endl;
+    }
+    void on_buttonCalADCDelay_clicked() {
+        QPlainTextEdit *p = ui->tab_3->findChild<QPlainTextEdit *>("calTextOutput");
+        p->clear();
+        QTextStream out(stdout);
+        QString str;
+        quint32 adcRegs[4*12];
+        bool  success = FEE.readADCDelay(adcRegs);
+        out << "success = " << success << Qt::endl;
+        quint32 counters[24];
+        quint32 countersOld[24];
+        int const m = 20000/200;
+        quint32 rates[12][m];
+        for (int ch=0; ch<12; ++ch) {
+            for (int i=0; i<m; ++i) {
+                rates[ch][i] = 0;
+            }
+        }
+        bool atLeastOneNonZeroRate = false;
+        for (int i=0; i<m; ++i) {
+            int const adcDelay = 200*i;
+            for (int j=0; j<12; ++j) {
+                adcRegs[4*j+3] = adcDelay;
+            }
+            FEE.writeADCDelay(adcRegs);
+            Sleep(10);
+            success = FEE.readCounters(countersOld);
+            Sleep(100);
+            success = FEE.readCounters(counters);
+            bool nonZeroRates[12] = {false};
+            for (int ch=0; ch<12; ++ch  ) {
+                //out << "ch[" << ch << "]: " << adcRegs[4*ch+3] << " "
+                //    << counters[2*ch] << " "
+                //    << counters[2*ch+1] << " "
+                //    << counters[2*ch]-countersOld[2*ch] << " "
+                //    << counters[2*ch+1]-countersOld[2*ch+1] << Qt::endl;
+                rates[ch][i] = counters[2*ch+1]-countersOld[2*ch+1];
+                atLeastOneNonZeroRate = (rates[ch][i]>0 ? true : atLeastOneNonZeroRate);
+                nonZeroRates[ch] = rates[ch][i]>0;
+            }
+            p->insertPlainText(str.sprintf("ADC Delay = %6d | ", adcDelay));
+            out << str.sprintf("ADC Delay = %6d | ", adcDelay);
+            for (int ch=0; ch<12; ++ch) {
+                out << str.sprintf("%6d", rates[ch][i]);
+                p->insertPlainText(str.sprintf("%6d", rates[ch][i]));
+            }
+            p->insertPlainText("\n");
+            //p->textChanged();
+            QScrollBar *sb = p->verticalScrollBar();
+            sb->setValue(sb->maximum());
+            out << Qt::endl;
+            qApp->processEvents();
+        }
+        for (int ch=0; ch<4; ++ch) {
+            double sumW  = 0.0;
+            double sumWX = 0.0;
+            for (int i=0; i<m; ++i) {
+                sumW  += rates[ch][i] ;
+                sumWX += (i*200) * rates[ch][i];
+               // if (rates[ch][i]) {
+               //     out << "--  ch[" << ch << "] " << (i*200) << " " << rates[ch][i] << Qt::endl;
+              //  }
+            }
+            if (sumW != 0.0) {
+                quint32 const off = std::lround(sumWX/sumW);
+                adcRegs[4*ch+3] = off;
+                out << "ch[" << ch << "] off= " << off << Qt::endl;
+            }
+        }
+        FEE.writeADCDelay(adcRegs);
     }
 
 private:
@@ -851,6 +1007,7 @@ private:
     Ui::MainWindow *ui;
 
     QDateTime start, end;
+    QTimer timer;
 
     QCustomPlot* chargeHist[12];            // First hist
     QCPBars* chargeBars[12];

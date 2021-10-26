@@ -27,7 +27,7 @@ public:
             resetting : 1,
                       :12;
     } boardStatus;
-    struct TRGsyncStatus {
+    struct HDMIlinkStatus {
         quint32
             line0delay          : 5,
             line0signalLost     : 1,
@@ -63,7 +63,7 @@ public:
     } statsCh[12][4];
 
     FITelectronics(): IPbusTarget(50011) {
-        connect(this, &IPbusTarget::IPbusStatusOK, this, [=]() { checkPMlinks(false); });
+        connect(this, &IPbusTarget::IPbusStatusOK, this, &FITelectronics::checkPMlinks);
     }
 
     quint32 readHistograms() {
@@ -71,13 +71,39 @@ public:
         curAddress = 0;
         quint32 wordsRead = 0;
         addTransaction(RMWbits, (curPM+1)*0x200 + 0x7E, masks(0xFFFF7FFF, 0));
-        addWordToWrite((curPM+1)*0x200 + 0xF5, curAddress);
-        if (transceive()) wordsRead = readFast((curPM+1)*0x200 + 0xF6, (quint32 *)&data, datasize, 6);
+        addTransaction(write, (curPM+1)*0x200 + 0xF5, &curAddress);
+        addTransaction(nonIncrementingRead, (curPM+1)*0x200 + 0xF6, (quint32 *)&data, 180);
+        addTransaction(nonIncrementingRead, (curPM+1)*0x200 + 0xF6, (quint32 *)&data + 180, 180);
+        quint8 qd=6;
+        if (transceive()) wordsRead = 360 + readFast((curPM+1)*0x200 + 0xF6, (quint32 *)&data + 360, datasize - 360, qd);
         if (histStatus.histOn) setBit(15, (curPM+1)*0x200 + 0x7E, false);
         updateTimer->start(updatePeriod_ms);
         return wordsRead;
     }
 
+    bool readTimeAlignment(quint32* data) {
+        addTransaction(read, (curPM+1)*0x200 + 1, data, 12);
+        return transceive();
+    }
+    bool writeTimeAlignment(quint32* data) {
+        addTransaction(write, (curPM+1)*0x200 + 1, data, 12);
+        return transceive();
+    }
+
+    bool readADCDelay(quint32 *data) {
+        addTransaction(read, (curPM+1)*0x200+0x7F+1,data, 12*4);
+        return transceive();
+    }
+
+    bool writeADCDelay(quint32 *data) {
+        addTransaction(write, (curPM+1)*0x200+0x7F+1,data, 12*4);
+        return transceive();
+    }
+
+    bool readCounters(quint32 *data) {
+        addTransaction(read, (curPM+1)*0x200+0xC0, data, 24);
+        return transceive();
+    }
     void calcStats(qint16 timeLower[12], qint16 timeUpper[12], qint16 chargeLower[12], qint16 chargeUpper[12]) {
         quint8 iCh;
         qint16 iBin;
@@ -153,49 +179,23 @@ public slots:
 //        }
 //    }
 
-//    void checkPMlinks() {
-//        quint32 maskSPI, maskTrgA, maskTrgC;// = readRegister(0x1E);
-//        addTransaction(read, 0x1E, &maskSPI);
-//        addTransaction(read, 0x1A, &maskTrgA);
-//        addTransaction(read, 0x3A, &maskTrgC);
-//        if (!transceive()) return;
-//        for (quint8 i=0; i<20; ++i) {
-//            if (!(maskSPI >> i & 1)) setBit(i, 0x1E, false);
-//            if (fabs(readRegister((i+1)*0x200 + 0xFD) * 3. / 65536 - 1.) < 0.2) {
-//                maskSPI |= 1 << i;
-//                if (i > 9) maskTrgC |= 1 << (i - 10);
-//                else       maskTrgA |= 1 << i;
-//            } else clearBit(i, 0x1E, false);
-//		}
-//        addWordToWrite(0x1A, maskTrgA);
-//        addWordToWrite(0x3A, maskTrgC);
-//        if (transceive() && _BitScanForward(&curPM, maskSPI)) emit linksStatusReady(maskSPI);
-//    }
-
-    void checkPMlinks(bool forced = false) {
-        quint32 maskSPI, maskTrgA, maskTrgC, voltage;
+    void checkPMlinks() {
+        quint32 maskSPI, maskTrgA, maskTrgC;// = readRegister(0x1E);
         addTransaction(read, 0x1E, &maskSPI);
         addTransaction(read, 0x1A, &maskTrgA);
         addTransaction(read, 0x3A, &maskTrgC);
         if (!transceive()) return;
-        if (maskSPI == 0 || forced) { //PMs should be probed by SPI
-            for (quint8 iPM=0; iPM<20; ++iPM) {
-                if (!(maskSPI >> iPM & 1)) setBit(iPM, 0x1E, false);
-                addTransaction(read, 0x200*(iPM+1) + 0xFE, &voltage);
-                if (!transceive()) return;
-                if (voltage == 0xFFFFFFFF) { //SPI error
-                    clearBit(iPM, 0x1E, false);
-                } else {
-                    maskSPI |= 1 << iPM;
-                    if (iPM > 9) maskTrgC |= 1 << (iPM - 10);
-                    else         maskTrgA |= 1 << iPM;
-                }
-            }
-            addWordToWrite(0x1A, maskTrgA);
-            addWordToWrite(0x3A, maskTrgC);
-            if (!transceive()) return;
-        }
-        emit linksStatusReady(maskSPI);
+        for (quint8 i=0; i<20; ++i) {
+            if (!(maskSPI >> i & 1)) setBit(i, 0x1E, false);
+            if (fabs(readRegister((i+1)*0x200 + 0xFD) * 3. / 65536 - 1.) < 0.2) {
+                maskSPI |= 1 << i;
+                if (i > 9) maskTrgC |= 1 << (i - 10);
+                else       maskTrgA |= 1 << i;
+            } else clearBit(i, 0x1E, false);
+		}
+        addWordToWrite(0x1A, maskTrgA);
+        addWordToWrite(0x3A, maskTrgC);
+        if (transceive() && _BitScanForward(&curPM, maskSPI)) emit linksStatusReady(maskSPI);
     }
 
     void sync() { //read actual values
